@@ -1,51 +1,143 @@
-# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022)
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 import streamlit as st
-from streamlit.logger import get_logger
+import preprocessor, helper
+import matplotlib.pyplot as plt
+import seaborn as sns
 
-LOGGER = get_logger(__name__)
+st.sidebar.title("Whatsapp Chat Analyser")
 
+uploaded_file = st.sidebar.file_uploader("Choose a file")
+if uploaded_file is not None:
+    bytes_data = uploaded_file.getvalue()
+    data = bytes_data.decode("utf-8")
+    df = preprocessor.preprocess(data)
 
-def run():
-    st.set_page_config(
-        page_title="Hello",
-        page_icon="👋",
-    )
-
-    st.write("# Welcome to Streamlit! 👋")
-
-    st.sidebar.success("Select a demo above.")
-
-    st.markdown(
-        """
-        Streamlit is an open-source app framework built specifically for
-        Machine Learning and Data Science projects.
-        **👈 Select a demo from the sidebar** to see some examples
-        of what Streamlit can do!
-        ### Want to learn more?
-        - Check out [streamlit.io](https://streamlit.io)
-        - Jump into our [documentation](https://docs.streamlit.io)
-        - Ask a question in our [community
-          forums](https://discuss.streamlit.io)
-        ### See more complex demos
-        - Use a neural net to [analyze the Udacity Self-driving Car Image
-          Dataset](https://github.com/streamlit/demo-self-driving)
-        - Explore a [New York City rideshare dataset](https://github.com/streamlit/demo-uber-nyc-pickups)
-    """
-    )
+    #st.dataframe(df)
 
 
-if __name__ == "__main__":
-    run()
+    #fetch unique users
+    user_list = df['users'].unique().tolist()
+    user_list.remove('group_notification')
+    user_list.sort()
+    user_list.insert(0,"Overall")
+
+    selected_user = st.sidebar.selectbox("Show analysis wrt", user_list)
+
+    if st.sidebar.button("Show Analysis"):
+
+
+        #Stats Area
+        st.title("Top Statistics")
+        num_messages, words, num_media_msg, num_links = helper.fetch_stats(selected_user,df)
+        col1, col2, col3, col4 = st.columns(4)
+
+        with col1:
+            st.header("Total Messages")
+            st.header(num_messages)
+        with col2:
+            st.header("Total Words")
+            st.header(words)
+        with col3:
+            st.header("Media Shared")
+            st.header(num_media_msg)
+        with col4:
+            st.header("Links Shared")
+            st.header(num_links)
+
+
+        # monthly timeline
+        st.title("Monthly Timeline")
+        timeline = helper.monthly_timeline(selected_user,df)
+
+        fig, ax = plt.subplots()
+        ax.plot(timeline['time'], timeline['message'], color='green')
+        plt.xticks(rotation='vertical')
+        st.pyplot(fig)
+
+
+        # daily timeline
+        st.title("Daily Timeline")
+        daily_timeline = helper.daily_timeline(selected_user, df)
+        fig, ax = plt.subplots()
+        ax.plot(daily_timeline['only_date'], daily_timeline['message'], color='black')
+        plt.xticks(rotation='vertical')
+        st.pyplot(fig)
+
+
+        # activity map
+        st.title('Activity Map')
+        col1,col2 = st.columns(2)
+
+        with col1:
+            st.header("Most busy day")
+            busy_day = helper.week_activity_map(selected_user,df)
+            fig,ax = plt.subplots()
+            ax.bar(busy_day.index,busy_day.values,color='purple')
+            plt.xticks(rotation='vertical')
+            st.pyplot(fig)
+
+        with col2:
+            st.header("Most busy month")
+            busy_month = helper.month_activity_map(selected_user, df)
+            fig, ax = plt.subplots()
+            ax.bar(busy_month.index, busy_month.values,color='orange')
+            plt.xticks(rotation='vertical')
+            st.pyplot(fig)
+
+        
+        #heat map
+        st.title("Weekly Activity Map")
+        user_heatmap = helper.activity_heatmap(selected_user,df)
+        fig,ax = plt.subplots()
+        ax = sns.heatmap(user_heatmap)
+        st.pyplot(fig)
+
+
+        #finding the most active users in the group(Group level)
+        if selected_user == 'Overall':
+            st.title("Most Active Users")
+            x, new_df = helper.most_active_users(df)
+            fig, ax = plt.subplots()
+
+            col1, col2 = st.columns(2)
+
+            with col1:
+                ax.bar(x.index,x.values,color='red')
+                plt.xticks(rotation='vertical')
+                st.pyplot(fig)
+            with col2:
+                st.dataframe(new_df)
+
+
+        # WordCloud
+        st.title("Wordcloud")
+        df_wc = helper.create_wordcloud(selected_user, df)
+        fig, ax = plt.subplots()
+        ax.imshow(df_wc)
+        st.pyplot(fig)
+
+
+        #Most common words
+        st.title("Most Common Words")
+        most_common_df = helper.most_common_words(selected_user,df)
+        
+        fig, ax = plt.subplots()
+        ax.barh(most_common_df[0],most_common_df[1])
+        plt.xticks(rotation='vertical')
+        st.pyplot(fig)
+
+
+        #emoji analysis
+        st.title("Emoji Analysis")
+        emoji_df = helper.emoji_helper(selected_user,df)
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.dataframe(emoji_df)
+        with col2:
+            fig, ax = plt.subplots()
+            ax.pie(emoji_df[1].head(), labels=emoji_df[0].head(), autopct="%0.2f")
+            st.pyplot(fig)
+
+        
+
